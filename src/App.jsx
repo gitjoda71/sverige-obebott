@@ -29,7 +29,7 @@ function App() {
         [38, 73],
       ],
       minZoom: 3.5,
-      maxZoom: 9,
+      maxZoom: 12,
       attributionControl: false,
       pitchWithRotate: false,
       dragRotate: false,
@@ -67,6 +67,7 @@ function App() {
       </div>
       <div className="attribution">
         Vektordata: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a> · public domain
+        &nbsp;·&nbsp; Höjdrelief: <a href="https://www.esri.com/" target="_blank" rel="noreferrer">Esri World Hillshade</a>
       </div>
       {errors.length > 0 && (
         <div className="errors">

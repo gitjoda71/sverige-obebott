@@ -3,8 +3,9 @@
 //
 // Färgschema:
 //   bakgrund (hav)   #0b1d2c   djup-marinblå
-//   land (mask)      #1a2a38   matt skiffer (skapar kontrast mot vatten)
-//   sjöar/floder     #4a86b3   blå
+//   land (mask)      #162636   matt skiffer
+//   hillshade        Esri World Hillshade, mörkfärgad via raster-color
+//   sjöar/floder     #3a78a6   blå
 //   glaciär          #b8d4e3   ljus is
 
 import { BASE } from './paths.js'
@@ -42,6 +43,17 @@ export const mapStyle = {
       type: 'geojson',
       data: `${BASE}data/glaciated.geojson`,
     },
+    // Höjdrelief — Esri World Hillshade (gratis, ingen token).
+    // Tile-format är {z}/{y}/{x} (Esri ArcGIS-konvention).
+    hillshade: {
+      type: 'raster',
+      tiles: [
+        'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 13,
+      attribution: 'Hillshade: Esri',
+    },
   },
   layers: [
     // Bakgrundsfärg = djupa havet
@@ -50,7 +62,7 @@ export const mapStyle = {
       type: 'background',
       paint: { 'background-color': '#0b1d2c' },
     },
-    // Land (Natural Earth ne_10m_land) — mörk skiffer
+    // Land — mörk skiffer som bas
     {
       id: 'land-fill',
       type: 'fill',
@@ -58,6 +70,22 @@ export const mapStyle = {
       paint: {
         'fill-color': '#162636',
         'fill-opacity': 1,
+      },
+    },
+    // Höjdrelief ovanpå land. raster-color mappar Esri:s gråskala
+    // till en mörkblå-grå palett så det smälter in i mörka temat.
+    // Subtil opacity så terrängen syns men inte tar över.
+    {
+      id: 'hillshade-raster',
+      type: 'raster',
+      source: 'hillshade',
+      minzoom: 4,
+      paint: {
+        'raster-opacity': 0.55,
+        'raster-saturation': -0.3,
+        'raster-contrast': 0.15,
+        'raster-brightness-min': 0.0,
+        'raster-brightness-max': 0.55,
       },
     },
     // Sjöar (stora, från ne_10m_lakes)
@@ -102,11 +130,12 @@ export const mapStyle = {
           3, 0.4,
           6, 1.0,
           9, 1.8,
+          12, 2.6,
         ],
-        'line-opacity': 0.85,
+        'line-opacity': 0.9,
       },
     },
-    // Vattendrag Europa-tillägg
+    // Vattendrag Europa-tillägg (mindre vattendrag)
     {
       id: 'rivers-europe-line',
       type: 'line',
@@ -118,8 +147,9 @@ export const mapStyle = {
           3, 0.3,
           6, 0.8,
           9, 1.4,
+          12, 2.2,
         ],
-        'line-opacity': 0.7,
+        'line-opacity': 0.75,
       },
     },
     // Kustlinje — subtil rim runt landmassan
@@ -134,6 +164,7 @@ export const mapStyle = {
           3, 0.3,
           6, 0.6,
           9, 1.0,
+          12, 1.4,
         ],
         'line-opacity': 0.55,
       },
