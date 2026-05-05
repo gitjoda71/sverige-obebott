@@ -14,6 +14,10 @@ export const mapStyle = {
   glyphs: undefined,
   sprite: undefined,
   sources: {
+    land: {
+      type: 'geojson',
+      data: `${BASE}data/land.geojson`,
+    },
     coastline: {
       type: 'geojson',
       data: `${BASE}data/coastline.geojson`,
@@ -47,6 +51,16 @@ export const mapStyle = {
       id: 'sea',
       type: 'background',
       paint: { 'background-color': '#0b1d2c' },
+    },
+    // Land (Natural Earth ne_10m_land) — mörk skiffer
+    {
+      id: 'land-fill',
+      type: 'fill',
+      source: 'land',
+      paint: {
+        'fill-color': '#162636',
+        'fill-opacity': 1,
+      },
     },
     // Sjöar (stora, från ne_10m_lakes)
     {

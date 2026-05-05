@@ -25,6 +25,7 @@ const BBOX = [10.0, 54.5, 24.5, 69.5] // [west, south, east, north]
 const BASE = 'https://naciscdn.org/naturalearth/10m/physical'
 
 const LAYERS = [
+  { name: 'land',          file: 'ne_10m_land' },
   { name: 'coastline',     file: 'ne_10m_coastline' },
   { name: 'lakes',         file: 'ne_10m_lakes' },
   { name: 'lakes_europe',  file: 'ne_10m_lakes_europe' },
@@ -72,14 +73,24 @@ async function main() {
       await unzip(zipPath, extractDir)
     }
 
-    // mapshaper: läs shapefile, klipp till bbox, skriv GeoJSON
+    // mapshaper: läs shapefile, klipp till bbox, skriv GeoJSON.
+    // Ingen simplify — Natural Earth 1:10m är redan grovt, simplify
+    // skulle radera Sveriges fragmenterade kustlinje.
     const bboxStr = BBOX.join(',')
-    const cmd = `-i "${shpPath}" -clip bbox=${bboxStr} -simplify 5% keep-shapes -o "${outPath}" format=geojson precision=0.0001`
+    const cmd = `-i "${shpPath}" -clip bbox=${bboxStr} -o "${outPath}" format=geojson precision=0.0001`
     await runMapshaper(cmd)
+
+    // Post-process: ta bort features utan geometri (efterlämningar av klippet).
+    const raw = JSON.parse(await readFile(outPath, 'utf8'))
+    const before = raw.features.length
+    raw.features = raw.features.filter((f) => f && f.geometry && f.geometry.coordinates)
+    const after = raw.features.length
+    await writeFile(outPath, JSON.stringify(raw))
 
     // Liten storleksrapport
     const buf = await readFile(outPath)
-    console.log('  →', outPath.split(/[\\/]/).slice(-3).join('/'), `(${(buf.length/1024).toFixed(1)} KB)`)
+    console.log('  →', outPath.split(/[\\/]/).slice(-3).join('/'),
+                `(${(buf.length/1024).toFixed(1)} KB, ${after}/${before} features)`)
   }
 
   console.log('\n✓ klar')

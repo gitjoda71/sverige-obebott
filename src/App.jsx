@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { mapStyle } from './mapStyle.js'
@@ -14,6 +14,7 @@ const INITIAL_ZOOM = 4.2
 function App() {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
+  const [errors, setErrors] = useState([])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -35,6 +36,12 @@ function App() {
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+
+    map.on('error', (e) => {
+      const msg = e?.error?.message || String(e?.error || 'unknown error')
+      console.error('[maplibre]', msg, e)
+      setErrors((prev) => prev.includes(msg) ? prev : [...prev, msg])
+    })
 
     map.on('load', () => {
       map.fitBounds(SWEDEN_BBOX, { padding: 40, duration: 0 })
@@ -61,6 +68,11 @@ function App() {
       <div className="attribution">
         Vektordata: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a> · public domain
       </div>
+      {errors.length > 0 && (
+        <div className="errors">
+          {errors.map((msg, i) => <div key={i}>⚠ {msg}</div>)}
+        </div>
+      )}
     </div>
   )
 }
