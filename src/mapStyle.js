@@ -11,8 +11,6 @@ import { BASE } from './paths.js'
 
 export const mapStyle = {
   version: 8,
-  glyphs: undefined,
-  sprite: undefined,
   sources: {
     land: {
       type: 'geojson',
