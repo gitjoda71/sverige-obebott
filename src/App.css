@@ -1,0 +1,90 @@
+.app {
+  position: relative;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.intro {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 2;
+  max-width: 320px;
+  padding: 18px 22px;
+  background: rgba(7, 17, 28, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(120, 170, 220, 0.18);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.intro h1 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #cfe1f3;
+}
+
+.intro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #98b3cc;
+}
+
+.attribution {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  z-index: 2;
+  font-size: 11px;
+  color: #6b8299;
+  letter-spacing: 0.02em;
+}
+
+.attribution a {
+  color: #8aa6c0;
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(138, 166, 192, 0.4);
+}
+
+.attribution a:hover {
+  color: #b9d2e8;
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-logo {
+  display: none !important;
+}
+
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  z-index: 1;
+}
+
+.maplibregl-ctrl-zoom-in,
+.maplibregl-ctrl-zoom-out,
+.maplibregl-ctrl-compass {
+  background-color: rgba(7, 17, 28, 0.72) !important;
+}
+
+@media (max-width: 600px) {
+  .intro {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    padding: 12px 14px;
+  }
+  .intro h1 { font-size: 14px; }
+  .intro p { font-size: 12px; }
+}
