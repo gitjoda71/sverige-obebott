@@ -12,11 +12,21 @@ on:
       release_tag:
         description: 'Release-tag att skriva PMTiles till (skapas om saknas).'
         required: true
-        default: 'tiles-v1'
+        default: 'tiles-v2'
       max_zoom:
-        description: 'tippecanoe maximum-zoom (14 ger ~1:10k vid overzoom till 19).'
+        description: 'tippecanoe maximum-zoom (12 ger overzoom till 19, mindre fil).'
         required: true
-        default: '14'
+        default: '12'
+      skip_landcover:
+        description: 'Hoppa över landcover-layern (gör filen mycket mindre).'
+        required: true
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
+      simplification:
+        description: 'tippecanoe simplification (1=mest detalj, 8=mest aggressiv).'
+        required: true
+        default: '3'
   schedule:
     # Kör 1:a varje månad kl 04:00 UTC för att hålla data fräsch.
     - cron: '0 4 1 * *'
@@ -197,27 +207,36 @@ jobs:
       - name: Run tippecanoe
         run: |
           set -e
-          MAX_ZOOM="${{ inputs.max_zoom || '14' }}"
+          MAX_ZOOM="${{ inputs.max_zoom || '12' }}"
+          SIMPL="${{ inputs.simplification || '3' }}"
+          SKIP_LC="${{ inputs.skip_landcover || 'true' }}"
+
+          # Bygg layer-list konditionellt — landcover är ofta största lagret
+          LAYERS=(
+            "-L" "landmass:geo/landmass.geojsonseq"
+            "-L" "water:geo/water.geojsonseq"
+            "-L" "waterway:geo/waterway.geojsonseq"
+            "-L" "wetland:geo/wetland.geojsonseq"
+            "-L" "glacier:geo/glacier.geojsonseq"
+            "-L" "islands:geo/islands.geojsonseq"
+            "-L" "coastline:geo/coastline.geojsonseq"
+          )
+          if [ "$SKIP_LC" != "true" ]; then
+            LAYERS+=("-L" "landcover:geo/landcover.geojsonseq")
+          else
+            echo "Skipping landcover-layer för mindre filstorlek"
+          fi
 
           tippecanoe -o sweden-natur.mbtiles --force \
             --minimum-zoom=0 \
             --maximum-zoom="${MAX_ZOOM}" \
             --base-zoom="${MAX_ZOOM}" \
-            --simplification=2 \
-            --no-tile-size-limit \
-            --no-feature-limit \
+            --simplification="${SIMPL}" \
             --drop-densest-as-needed \
+            --coalesce-densest-as-needed \
             --extend-zooms-if-still-dropping \
             --read-parallel \
-            --coalesce-densest-as-needed \
-            -L landmass:geo/landmass.geojsonseq \
-            -L water:geo/water.geojsonseq \
-            -L waterway:geo/waterway.geojsonseq \
-            -L wetland:geo/wetland.geojsonseq \
-            -L glacier:geo/glacier.geojsonseq \
-            -L islands:geo/islands.geojsonseq \
-            -L landcover:geo/landcover.geojsonseq \
-            -L coastline:geo/coastline.geojsonseq
+            "${LAYERS[@]}"
 
           ls -lh sweden-natur.mbtiles
 
