@@ -139,32 +139,35 @@ jobs:
           # osmium export filtrerar geometrityp via --geometry-types.
           # geojsonseq är RS-prefixad ndjson; tippecanoe läser det direkt.
 
+          # osmium export --geometry-types tar point|linestring|polygon
+          # (multi-versioner hanteras automatiskt internt)
+
           osmium export filtered/coastline.pbf -f geojsonseq -O \
-            --geometry-types=linestring,multilinestring \
+            --geometry-types=linestring \
             -o geo/coastline.geojsonseq
 
           osmium export filtered/water.pbf -f geojsonseq -O \
-            --geometry-types=polygon,multipolygon \
+            --geometry-types=polygon \
             -o geo/water.geojsonseq
 
           osmium export filtered/waterway.pbf -f geojsonseq -O \
-            --geometry-types=linestring,multilinestring \
+            --geometry-types=linestring \
             -o geo/waterway.geojsonseq
 
           osmium export filtered/wetland.pbf -f geojsonseq -O \
-            --geometry-types=polygon,multipolygon \
+            --geometry-types=polygon \
             -o geo/wetland.geojsonseq
 
           osmium export filtered/glacier.pbf -f geojsonseq -O \
-            --geometry-types=polygon,multipolygon \
+            --geometry-types=polygon \
             -o geo/glacier.geojsonseq
 
           osmium export filtered/islands.pbf -f geojsonseq -O \
-            --geometry-types=polygon,multipolygon \
+            --geometry-types=polygon \
             -o geo/islands.geojsonseq
 
           osmium export filtered/landcover.pbf -f geojsonseq -O \
-            --geometry-types=polygon,multipolygon \
+            --geometry-types=polygon \
             -o geo/landcover.geojsonseq
 
           ls -lh geo/
