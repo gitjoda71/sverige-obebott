@@ -1,0 +1,249 @@
+name: Build PMTiles
+
+# Pipeline: Geofabrik Sweden PBF + OSM water polygons → osmium-tags-filter →
+# osmium-export → tippecanoe (multi-layer) → pmtiles convert → GitHub Release.
+#
+# Output: sweden-natur.pmtiles uppladdad som asset på en taggad Release.
+# Frontenden läser den via pmtiles://-protokollet i runtime.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release-tag att skriva PMTiles till (skapas om saknas).'
+        required: true
+        default: 'tiles-v1'
+      max_zoom:
+        description: 'tippecanoe maximum-zoom (14 ger ~1:10k vid overzoom till 19).'
+        required: true
+        default: '14'
+  schedule:
+    # Kör 1:a varje månad kl 04:00 UTC för att hålla data fräsch.
+    - cron: '0 4 1 * *'
+
+permissions:
+  contents: write   # behövs för release upload
+
+concurrency:
+  group: build-tiles
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disk + memory baseline
+        run: |
+          df -h /
+          free -h
+          nproc
+
+      - name: Install osmium-tool, gdal, jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            osmium-tool gdal-bin python3-gdal jq unzip ca-certificates curl
+          osmium --version
+          ogr2ogr --version
+
+      - name: Install tippecanoe (felt fork, latest tagged)
+        run: |
+          set -e
+          git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          cd /tmp/tippecanoe
+          make -j"$(nproc)"
+          sudo make install
+          tippecanoe --version
+
+      - name: Install pmtiles CLI
+        run: |
+          set -e
+          curl -sSL https://github.com/protomaps/go-pmtiles/releases/download/v1.30.2/go-pmtiles_1.30.2_Linux_x86_64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin pmtiles
+          sudo chmod +x /usr/local/bin/pmtiles
+          pmtiles version
+
+      - name: Cache Geofabrik Sweden PBF
+        id: cache-pbf
+        uses: actions/cache@v4
+        with:
+          path: sweden-latest.osm.pbf
+          # Geofabrik publicerar dagligen; cache:a per dag.
+          key: geofabrik-sweden-${{ steps.date.outputs.day || 'static' }}
+
+      - name: Download Geofabrik Sweden PBF
+        if: steps.cache-pbf.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          curl -L --retry 3 --fail \
+            -o sweden-latest.osm.pbf \
+            https://download.geofabrik.de/europe/sweden-latest.osm.pbf
+          ls -lh sweden-latest.osm.pbf
+
+      - name: Filter OSM by tags (osmium tags-filter)
+        run: |
+          set -e
+          mkdir -p filtered
+
+          # Coastline-ways (linjer som beskriver havsstrand)
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/coastline.pbf \
+            w/natural=coastline
+
+          # Vatten-polygoner: sjöar, dammar, bäcken-polygoner, vikar
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/water.pbf \
+            wr/natural=water \
+            wr/natural=bay \
+            wr/natural=strait \
+            wr/landuse=reservoir \
+            wr/landuse=basin \
+            wr/water
+
+          # Vattendrag-linjer
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/waterway.pbf \
+            w/waterway=river,stream,canal,drain,ditch,brook,tidal_channel
+
+          # Våtmark
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/wetland.pbf \
+            wr/natural=wetland
+
+          # Glaciär
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/glacier.pbf \
+            wr/natural=glacier
+
+          # Öar / öyamangler / arkipelag (place=island/islet är ofta polygon)
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/islands.pbf \
+            wr/place=island,islet,archipelago \
+            wr/natural=island,islet
+
+          # Övrig markyta — bara natural=*, inga landuse=residential/industrial
+          osmium tags-filter sweden-latest.osm.pbf -O \
+            -o filtered/landcover.pbf \
+            wr/natural=wood,scrub,heath,grassland,bare_rock,scree,sand,beach,fell,cliff,rock,stone
+
+          ls -lh filtered/
+
+      - name: Export filtered PBF → GeoJSONSeq
+        run: |
+          set -e
+          mkdir -p geo
+
+          # osmium export filtrerar geometrityp via --geometry-types.
+          # geojsonseq är RS-prefixad ndjson; tippecanoe läser det direkt.
+
+          osmium export filtered/coastline.pbf -f geojsonseq -O \
+            --geometry-types=linestring,multilinestring \
+            -o geo/coastline.geojsonseq
+
+          osmium export filtered/water.pbf -f geojsonseq -O \
+            --geometry-types=polygon,multipolygon \
+            -o geo/water.geojsonseq
+
+          osmium export filtered/waterway.pbf -f geojsonseq -O \
+            --geometry-types=linestring,multilinestring \
+            -o geo/waterway.geojsonseq
+
+          osmium export filtered/wetland.pbf -f geojsonseq -O \
+            --geometry-types=polygon,multipolygon \
+            -o geo/wetland.geojsonseq
+
+          osmium export filtered/glacier.pbf -f geojsonseq -O \
+            --geometry-types=polygon,multipolygon \
+            -o geo/glacier.geojsonseq
+
+          osmium export filtered/islands.pbf -f geojsonseq -O \
+            --geometry-types=polygon,multipolygon \
+            -o geo/islands.geojsonseq
+
+          osmium export filtered/landcover.pbf -f geojsonseq -O \
+            --geometry-types=polygon,multipolygon \
+            -o geo/landcover.geojsonseq
+
+          ls -lh geo/
+
+      - name: Download OSM water polygons (havs-coastline polygonized)
+        run: |
+          set -e
+          curl -L --retry 3 --fail \
+            -o water-polygons-split-4326.zip \
+            https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip
+          unzip -q water-polygons-split-4326.zip
+          ls -d water-polygons-split-4326
+
+      - name: Clip ocean polygons to Sweden bbox
+        run: |
+          set -e
+          # Sverige-bbox: lon 10.0–24.5, lat 54.5–69.5
+          ogr2ogr -spat 10.0 54.5 24.5 69.5 \
+            -clipsrc 10.0 54.5 24.5 69.5 \
+            -f GeoJSONSeq geo/ocean.geojsonseq \
+            water-polygons-split-4326/water_polygons.shp \
+            -nln ocean -nlt PROMOTE_TO_MULTI
+          ls -lh geo/ocean.geojsonseq
+
+      - name: Run tippecanoe
+        run: |
+          set -e
+          MAX_ZOOM="${{ inputs.max_zoom || '14' }}"
+
+          tippecanoe -o sweden-natur.mbtiles --force \
+            --minimum-zoom=0 \
+            --maximum-zoom="${MAX_ZOOM}" \
+            --base-zoom="${MAX_ZOOM}" \
+            --simplification=2 \
+            --no-tile-size-limit \
+            --no-feature-limit \
+            --drop-densest-as-needed \
+            --extend-zooms-if-still-dropping \
+            --read-parallel \
+            --coalesce-densest-as-needed \
+            -L ocean:geo/ocean.geojsonseq \
+            -L water:geo/water.geojsonseq \
+            -L waterway:geo/waterway.geojsonseq \
+            -L wetland:geo/wetland.geojsonseq \
+            -L glacier:geo/glacier.geojsonseq \
+            -L islands:geo/islands.geojsonseq \
+            -L landcover:geo/landcover.geojsonseq \
+            -L coastline:geo/coastline.geojsonseq
+
+          ls -lh sweden-natur.mbtiles
+
+      - name: Convert MBTiles → PMTiles
+        run: |
+          set -e
+          pmtiles convert sweden-natur.mbtiles sweden-natur.pmtiles
+          ls -lh sweden-natur.pmtiles
+          pmtiles show sweden-natur.pmtiles | head -50
+
+      - name: Upload as Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="${{ inputs.release_tag || 'tiles-v1' }}"
+          # Skapa release om saknas
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Vector tiles ($TAG)" \
+              --notes "Sweden nature-only vector tiles — built $(date -u +%Y-%m-%dT%H:%M:%SZ).\n\nSources: OpenStreetMap (ODbL) via Geofabrik + osmdata.openstreetmap.de water polygons.\n\nLayers: ocean, water, waterway, wetland, glacier, islands, landcover, coastline.\n\nMaxZoom: ${{ inputs.max_zoom || '14' }}."
+          fi
+          gh release upload "$TAG" sweden-natur.pmtiles --clobber
+
+          echo "Asset URL: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/sweden-natur.pmtiles"
+
+      - name: Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- PBF: $(ls -lh sweden-latest.osm.pbf | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- MBTiles: $(ls -lh sweden-natur.mbtiles | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- PMTiles: $(ls -lh sweden-natur.pmtiles | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- MaxZoom: ${{ inputs.max_zoom || '14' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Release: ${{ inputs.release_tag || 'tiles-v1' }}" >> $GITHUB_STEP_SUMMARY
