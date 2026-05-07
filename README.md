@@ -26,13 +26,17 @@ npm install
 npm run dev
 ```
 
-Frontend hämtar PMTiles direkt från GitHub Release `tiles-v1` via
-range-requests. Inget data-prepare-steg behövs lokalt.
+Frontend hämtar PMTiles same-origin från `${BASE}sweden-natur.pmtiles`.
+I produktion laddar deploy.yml ner PMTiles från GitHub Release `tiles-v2`
+till `public/` före `npm run build`, så filen följer med Pages-deployen
+och servas same-origin (kringgår Azure-Blob-CORS-blockering på Release-
+CDN:s slutdestination).
 
-För att peka mot annan tile-källa under utveckling:
+För lokal dev: peka `VITE_TILES_URL` mot en lokal/extern tile-källa,
+eller ladda ner Release-asseten manuellt:
 
 ```powershell
-$env:VITE_TILES_URL = "http://localhost:8000/sweden-natur.pmtiles"
+gh release download tiles-v2 --pattern 'sweden-natur.pmtiles' --output public/sweden-natur.pmtiles
 npm run dev
 ```
 

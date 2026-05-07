@@ -24,6 +24,19 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Download PMTiles asset from Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Hosta PMTiles same-origin via Pages för att undvika CORS-blockering
+          # på Azure Blob-redirect (saknar Access-Control-Allow-Origin).
+          # Filen följer med varje deploy men ligger inte i git.
+          mkdir -p public
+          gh release download tiles-v2 \
+            --repo "${{ github.repository }}" \
+            --pattern 'sweden-natur.pmtiles' \
+            --output public/sweden-natur.pmtiles
+          ls -lh public/sweden-natur.pmtiles
       - name: Build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/

@@ -13,6 +13,9 @@ dist-ssr
 data-cache
 *.local
 
+# PMTiles-fil laddas ner under deploy:n; ligger inte i git
+public/*.pmtiles
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
