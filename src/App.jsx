@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
+import { Protocol } from 'pmtiles'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { mapStyle } from './mapStyle.js'
 import { parseHash, attachHashSync } from './useUrlHash.js'
 import './App.css'
+
+// Registrera pmtiles://-protokollet en gång globalt så MapLibre kan
+// läsa range-requests från statiska PMTiles-filer.
+if (!maplibregl.getProtocol?.('pmtiles')) {
+  const pmtilesProtocol = new Protocol()
+  maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile)
+}
 
 const SWEDEN_BBOX = [
   [10.0, 54.5],  // SW
@@ -33,13 +41,14 @@ function App() {
         [38, 73],
       ],
       minZoom: 3.5,
-      maxZoom: 12,
+      maxZoom: 19,
       attributionControl: false,
       pitchWithRotate: false,
       dragRotate: false,
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 120 }), 'bottom-left')
 
     map.on('error', (e) => {
       const msg = e?.error?.message || String(e?.error || 'unknown error')
@@ -116,8 +125,9 @@ function App() {
         >ⓘ</button>
       )}
       <div className="attribution">
-        Vektordata: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a> · public domain
+        Vektordata: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a> bidragsgivare (ODbL)
         &nbsp;·&nbsp; Höjdrelief: <a href="https://www.esri.com/" target="_blank" rel="noreferrer">Esri World Hillshade</a>
+        &nbsp;·&nbsp; Tiles: <a href="https://protomaps.com/" target="_blank" rel="noreferrer">PMTiles</a>
       </div>
       {errors.length > 0 && (
         <div className="errors">

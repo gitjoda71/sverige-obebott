@@ -1,50 +1,48 @@
-// MapLibre style — naturlig geografi, ingen text, mörk bakgrund.
-// Källor laddas från relativa paths (statiska GeoJSON i public/data/).
+// MapLibre style — naturlig geografi från OpenStreetMap via PMTiles.
+// Ingen text, mörk bakgrund, hav-blå som rotfärg.
+//
+// Datakälla: PMTiles på GitHub Release. Layers (source-layers):
+//   landmass   polygons  — landytor (osmdata.openstreetmap.de land-polygons)
+//   water      polygons  — sjöar, dammar, vikar (OSM natural=water/bay/strait)
+//   waterway   lines     — bäckar, floder, kanaler (OSM waterway=*)
+//   wetland    polygons  — våtmark (OSM natural=wetland)
+//   glacier    polygons  — glaciär (OSM natural=glacier)
+//   landcover  polygons  — skog/hed/sten/sand (OSM natural=wood,scrub,bare_rock,…)
+//   coastline  lines     — kustlinje-rim (OSM w/natural=coastline)
+//   islands    polygons  — namngivna öar (OSM place=island/islet) — ej ritad
 //
 // Färgschema:
 //   bakgrund (hav)   #0b1d2c   djup-marinblå
-//   land (mask)      #162636   matt skiffer
-//   hillshade        Esri World Hillshade, mörkfärgad via raster-color
-//   sjöar/floder     #3a78a6   blå
+//   land             #162636   matt skiffer
+//   landcover        #1a2c3d   en aning ljusare än land för diskret textur
+//   wetland          #1f3848   blågrå
+//   sjöar/vikar      #3a78a6   blå
+//   vattendrag       #4a86b3   blå-line
 //   glaciär          #b8d4e3   ljus is
+//   coastline-rim    #7fb1d6   ljus rim, låg opacity
 
-import { BASE } from './paths.js'
+import { TILES_URL } from './paths.js'
+
+// Hjälpfunktion för zoom-interpolerade line-bredder
+const lineWidth = (z3, z6, z10, z14, z19) => [
+  'interpolate', ['linear'], ['zoom'],
+  3, z3,
+  6, z6,
+  10, z10,
+  14, z14,
+  19, z19,
+]
 
 export const mapStyle = {
   version: 8,
   sources: {
-    land: {
-      type: 'geojson',
-      data: `${BASE}data/land.geojson`,
+    nature: {
+      type: 'vector',
+      url: `pmtiles://${TILES_URL}`,
+      attribution: '© OpenStreetMap contributors',
     },
-    coastline: {
-      type: 'geojson',
-      data: `${BASE}data/coastline.geojson`,
-    },
-    lakes: {
-      type: 'geojson',
-      data: `${BASE}data/lakes.geojson`,
-    },
-    lakes_europe: {
-      type: 'geojson',
-      data: `${BASE}data/lakes_europe.geojson`,
-    },
-    rivers: {
-      type: 'geojson',
-      data: `${BASE}data/rivers.geojson`,
-      lineMetrics: true,
-    },
-    rivers_europe: {
-      type: 'geojson',
-      data: `${BASE}data/rivers_europe.geojson`,
-      lineMetrics: true,
-    },
-    glaciated: {
-      type: 'geojson',
-      data: `${BASE}data/glaciated.geojson`,
-    },
-    // Höjdrelief — Esri World Hillshade (gratis, ingen token).
-    // Tile-format är {z}/{y}/{x} (Esri ArcGIS-konvention).
+    // Höjdrelief — Esri World Hillshade. Inga tokens, inga ortnamn,
+    // bara skuggning från SRTM/ASTER.
     hillshade: {
       type: 'raster',
       tiles: [
@@ -56,117 +54,174 @@ export const mapStyle = {
     },
   },
   layers: [
-    // Bakgrundsfärg = djupa havet
+    // 1. Bakgrund = djupa havet
     {
-      id: 'sea',
+      id: 'sea-background',
       type: 'background',
       paint: { 'background-color': '#0b1d2c' },
     },
-    // Land — mörk skiffer som bas
+
+    // 2. Land — varje liten ö i skärgården är en egen polygon
     {
-      id: 'land-fill',
+      id: 'landmass-fill',
       type: 'fill',
-      source: 'land',
+      source: 'nature',
+      'source-layer': 'landmass',
       paint: {
         'fill-color': '#162636',
-        'fill-opacity': 1,
+        'fill-antialias': true,
       },
     },
-    // Höjdrelief ovanpå land. raster-color mappar Esri:s gråskala
-    // till en mörkblå-grå palett så det smälter in i mörka temat.
-    // Subtil opacity så terrängen syns men inte tar över.
+
+    // 3. Höjdrelief ovanpå land. raster-color skulle krävt webgl2 så
+    //    vi modulerar via opacity/saturation för mörk-tema-passing.
     {
       id: 'hillshade-raster',
       type: 'raster',
       source: 'hillshade',
       minzoom: 4,
+      maxzoom: 14,
       paint: {
-        'raster-opacity': 0.55,
+        'raster-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          4, 0.45,
+          10, 0.55,
+          14, 0.35,
+        ],
         'raster-saturation': -0.3,
         'raster-contrast': 0.15,
         'raster-brightness-min': 0.0,
         'raster-brightness-max': 0.55,
       },
     },
-    // Sjöar (stora, från ne_10m_lakes)
+
+    // 4. Landcover (skog, hed, klippa, sand) — subtil ton ovanpå land
     {
-      id: 'lakes-fill',
+      id: 'landcover-fill',
       type: 'fill',
-      source: 'lakes',
+      source: 'nature',
+      'source-layer': 'landcover',
+      minzoom: 6,
       paint: {
-        'fill-color': '#3a78a6',
-        'fill-opacity': 0.95,
+        'fill-color': [
+          'match',
+          ['get', 'natural'],
+          'wood', '#162e25',
+          'scrub', '#1a2a22',
+          'heath', '#1d2a25',
+          'grassland', '#1d2c2a',
+          'bare_rock', '#22303d',
+          'scree', '#202b35',
+          'sand', '#3a3424',
+          'beach', '#3a3424',
+          'fell', '#1f2c33',
+          'cliff', '#2a3540',
+          'rock', '#22303d',
+          'stone', '#22303d',
+          /* default */ '#1a2c3d',
+        ],
+        'fill-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          6, 0.0,
+          8, 0.35,
+          12, 0.55,
+          16, 0.7,
+        ],
       },
     },
-    // Sjöar Europa-tillägg (mindre sjöar med högre detalj)
+
+    // 5. Våtmark — blågrå mellanting, lite mer synlig vid hög zoom
     {
-      id: 'lakes-europe-fill',
+      id: 'wetland-fill',
       type: 'fill',
-      source: 'lakes_europe',
+      source: 'nature',
+      'source-layer': 'wetland',
       paint: {
-        'fill-color': '#3a78a6',
-        'fill-opacity': 0.95,
+        'fill-color': '#1f3848',
+        'fill-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          5, 0.55,
+          10, 0.7,
+          14, 0.85,
+        ],
       },
     },
-    // Glaciärer
+
+    // 6. Vatten-polygoner — sjöar, vikar, dammar, kanaler-polys
+    {
+      id: 'water-fill',
+      type: 'fill',
+      source: 'nature',
+      'source-layer': 'water',
+      paint: {
+        'fill-color': '#3a78a6',
+        'fill-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          3, 0.85,
+          10, 0.95,
+        ],
+      },
+    },
+
+    // 7. Glaciär ovanpå allt vatten, mest i Lapplands fjälltrakter
     {
       id: 'glacier-fill',
       type: 'fill',
-      source: 'glaciated',
+      source: 'nature',
+      'source-layer': 'glacier',
       paint: {
         'fill-color': '#b8d4e3',
         'fill-opacity': 0.85,
       },
     },
-    // Vattendrag - huvudfloder
+
+    // 8. Vattendrag-linjer — bäckar/floder. Tunna och fler vid hög zoom.
     {
-      id: 'rivers-line',
+      id: 'waterway-line-major',
       type: 'line',
-      source: 'rivers',
+      source: 'nature',
+      'source-layer': 'waterway',
+      filter: ['in', ['get', 'waterway'], ['literal', ['river', 'canal']]],
       paint: {
         'line-color': '#4a86b3',
-        'line-width': [
-          'interpolate', ['linear'], ['zoom'],
-          3, 0.4,
-          6, 1.0,
-          9, 1.8,
-          12, 2.6,
-        ],
-        'line-opacity': 0.9,
+        'line-width': lineWidth(0.4, 1.0, 1.8, 3.0, 6.0),
+        'line-opacity': 0.95,
       },
     },
-    // Vattendrag Europa-tillägg (mindre vattendrag)
     {
-      id: 'rivers-europe-line',
+      id: 'waterway-line-minor',
       type: 'line',
-      source: 'rivers_europe',
+      source: 'nature',
+      'source-layer': 'waterway',
+      filter: ['in', ['get', 'waterway'], ['literal', ['stream', 'brook', 'tidal_channel', 'drain', 'ditch']]],
+      minzoom: 9,
       paint: {
         'line-color': '#4a86b3',
-        'line-width': [
+        'line-width': lineWidth(0.0, 0.0, 0.6, 1.4, 3.0),
+        'line-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          3, 0.3,
-          6, 0.8,
-          9, 1.4,
-          12, 2.2,
+          9, 0.5,
+          14, 0.85,
         ],
-        'line-opacity': 0.75,
       },
     },
-    // Kustlinje — subtil rim runt landmassan
+
+    // 9. Kustlinje-rim — subtilt highlight längs alla strandkanter,
+    //    blir starkare vid hög zoom så vikarna framträder.
     {
       id: 'coastline-line',
       type: 'line',
-      source: 'coastline',
+      source: 'nature',
+      'source-layer': 'coastline',
       paint: {
         'line-color': '#7fb1d6',
-        'line-width': [
+        'line-width': lineWidth(0.3, 0.5, 0.8, 1.2, 1.6),
+        'line-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          3, 0.3,
-          6, 0.6,
-          9, 1.0,
-          12, 1.4,
+          3, 0.35,
+          8, 0.5,
+          14, 0.65,
         ],
-        'line-opacity': 0.55,
       },
     },
   ],
