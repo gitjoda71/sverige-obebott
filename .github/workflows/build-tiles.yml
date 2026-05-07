@@ -169,25 +169,27 @@ jobs:
 
           ls -lh geo/
 
-      - name: Download OSM water polygons (havs-coastline polygonized)
+      - name: Download OSM land polygons (polygonized från coastline)
         run: |
           set -e
+          # land-polygons-split-4326: tusentals små polygoner per kontinent/ö-grupp,
+          # genererade från natural=coastline. Perfekt skärgårds-detalj.
           curl -L --retry 3 --fail \
-            -o water-polygons-split-4326.zip \
-            https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip
-          unzip -q water-polygons-split-4326.zip
-          ls -d water-polygons-split-4326
+            -o land-polygons-split-4326.zip \
+            https://osmdata.openstreetmap.de/download/land-polygons-split-4326.zip
+          unzip -q land-polygons-split-4326.zip
+          ls -d land-polygons-split-4326
 
-      - name: Clip ocean polygons to Sweden bbox
+      - name: Clip land polygons to Sweden bbox
         run: |
           set -e
           # Sverige-bbox: lon 10.0–24.5, lat 54.5–69.5
           ogr2ogr -spat 10.0 54.5 24.5 69.5 \
             -clipsrc 10.0 54.5 24.5 69.5 \
-            -f GeoJSONSeq geo/ocean.geojsonseq \
-            water-polygons-split-4326/water_polygons.shp \
-            -nln ocean -nlt PROMOTE_TO_MULTI
-          ls -lh geo/ocean.geojsonseq
+            -f GeoJSONSeq geo/landmass.geojsonseq \
+            land-polygons-split-4326/land_polygons.shp \
+            -nln landmass -nlt PROMOTE_TO_MULTI
+          ls -lh geo/landmass.geojsonseq
 
       - name: Run tippecanoe
         run: |
@@ -205,7 +207,7 @@ jobs:
             --extend-zooms-if-still-dropping \
             --read-parallel \
             --coalesce-densest-as-needed \
-            -L ocean:geo/ocean.geojsonseq \
+            -L landmass:geo/landmass.geojsonseq \
             -L water:geo/water.geojsonseq \
             -L waterway:geo/waterway.geojsonseq \
             -L wetland:geo/wetland.geojsonseq \
@@ -233,7 +235,7 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --title "Vector tiles ($TAG)" \
-              --notes "Sweden nature-only vector tiles — built $(date -u +%Y-%m-%dT%H:%M:%SZ).\n\nSources: OpenStreetMap (ODbL) via Geofabrik + osmdata.openstreetmap.de water polygons.\n\nLayers: ocean, water, waterway, wetland, glacier, islands, landcover, coastline.\n\nMaxZoom: ${{ inputs.max_zoom || '14' }}."
+              --notes "Sweden nature-only vector tiles — built $(date -u +%Y-%m-%dT%H:%M:%SZ).\n\nSources: OpenStreetMap (ODbL) via Geofabrik + osmdata.openstreetmap.de land polygons.\n\nLayers: landmass, water, waterway, wetland, glacier, islands, landcover, coastline.\n\nMaxZoom: ${{ inputs.max_zoom || '14' }}."
           fi
           gh release upload "$TAG" sweden-natur.pmtiles --clobber
 
