@@ -206,16 +206,26 @@ export const mapStyle = {
     },
 
     // 8. Vattendrag-linjer — bäckar/floder. Tunna och fler vid hög zoom.
+    //
+    // Gemensamt filter: skipp underjordiska/täckta segment, samt
+    // tidal_channel som typiskt går i öppet hav i skärgården.
     {
       id: 'waterway-line-major',
       type: 'line',
       source: 'nature',
       'source-layer': 'waterway',
-      filter: ['in', ['get', 'waterway'], ['literal', ['river', 'canal']]],
+      filter: [
+        'all',
+        ['in', ['get', 'waterway'], ['literal', ['river', 'canal']]],
+        ['!=', ['coalesce', ['get', 'tunnel'], ''], 'yes'],
+        ['!=', ['coalesce', ['get', 'tunnel'], ''], 'culvert'],
+        ['!=', ['coalesce', ['get', 'covered'], ''], 'yes'],
+      ],
+      minzoom: 7,
       paint: {
         'line-color': '#4a86b3',
         'line-width': lineWidth(0.4, 1.0, 1.8, 3.0, 6.0),
-        'line-opacity': 0.95,
+        'line-opacity': 0.85,
       },
     },
     {
@@ -223,15 +233,21 @@ export const mapStyle = {
       type: 'line',
       source: 'nature',
       'source-layer': 'waterway',
-      filter: ['in', ['get', 'waterway'], ['literal', ['stream', 'brook', 'tidal_channel', 'drain', 'ditch']]],
-      minzoom: 9,
+      filter: [
+        'all',
+        ['in', ['get', 'waterway'], ['literal', ['stream', 'brook', 'drain', 'ditch']]],
+        ['!=', ['coalesce', ['get', 'tunnel'], ''], 'yes'],
+        ['!=', ['coalesce', ['get', 'tunnel'], ''], 'culvert'],
+        ['!=', ['coalesce', ['get', 'covered'], ''], 'yes'],
+      ],
+      minzoom: 10,
       paint: {
         'line-color': '#4a86b3',
         'line-width': lineWidth(0.0, 0.0, 0.6, 1.4, 3.0),
         'line-opacity': [
           'interpolate', ['linear'], ['zoom'],
-          9, 0.5,
-          14, 0.85,
+          10, 0.45,
+          14, 0.8,
         ],
       },
     },

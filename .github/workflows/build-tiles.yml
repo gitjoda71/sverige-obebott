@@ -114,10 +114,11 @@ jobs:
             wr/landuse=reservoir \
             wr/landuse=basin
 
-          # Vattendrag-linjer
+          # Vattendrag-linjer. Skipp tidal_channel (kanaler i skärgårdshav,
+          # syns som blå linjer mitt i Östersjön i renderingen).
           osmium tags-filter sweden-latest.osm.pbf -O \
             -o filtered/waterway.pbf \
-            w/waterway=river,stream,canal,drain,ditch,brook,tidal_channel
+            w/waterway=river,stream,canal,drain,ditch,brook
 
           # Våtmark
           osmium tags-filter sweden-latest.osm.pbf -O \
