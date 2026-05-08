@@ -147,12 +147,23 @@ export const mapStyle = {
       },
     },
 
-    // 6. Vatten-polygoner — sjöar, vikar, dammar, kanaler-polys
+    // 6. Vatten-polygoner — sjöar, dammar, reservoarer.
+    //
+    // Filtrera bort natural=bay/strait samt water=sea/ocean — dessa är
+    // stora havsarms-polygoner som överlappar havsbakgrunden och syns
+    // som blå "fält" över skärgården. Hav är redan vår bakgrundsfärg,
+    // så vi behöver inte rita dem som polygoner.
     {
       id: 'water-fill',
       type: 'fill',
       source: 'nature',
       'source-layer': 'water',
+      filter: [
+        'all',
+        ['!', ['in', ['coalesce', ['get', 'natural'], ''], ['literal', ['bay', 'strait']]]],
+        ['!', ['in', ['coalesce', ['get', 'water'], ''], ['literal', ['sea', 'ocean']]]],
+        ['!', ['in', ['coalesce', ['get', 'place'], ''], ['literal', ['sea', 'ocean']]]],
+      ],
       paint: {
         'fill-color': '#3a78a6',
         'fill-opacity': [

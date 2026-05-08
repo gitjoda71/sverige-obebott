@@ -103,15 +103,16 @@ jobs:
             -o filtered/coastline.pbf \
             w/natural=coastline
 
-          # Vatten-polygoner: sjöar, dammar, bäcken-polygoner, vikar
+          # Vatten-polygoner: sjöar, dammar, reservoarer.
+          # Skipp natural=bay/strait — det är havsarms-polygoner som
+          # överlappar havsbakgrunden och syns som blå spöken över
+          # skärgården. Skipp generic 'water' som tag eftersom det matchar
+          # water=sea/ocean på havs-features.
           osmium tags-filter sweden-latest.osm.pbf -O \
             -o filtered/water.pbf \
             wr/natural=water \
-            wr/natural=bay \
-            wr/natural=strait \
             wr/landuse=reservoir \
-            wr/landuse=basin \
-            wr/water
+            wr/landuse=basin
 
           # Vattendrag-linjer
           osmium tags-filter sweden-latest.osm.pbf -O \
