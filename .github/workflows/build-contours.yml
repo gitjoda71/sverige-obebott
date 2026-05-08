@@ -1,0 +1,193 @@
+name: Build Contours PMTiles
+
+# Pipeline: Copernicus GLO-90 DEM-tiles (gratis, ingen token, AWS Open Data)
+# → mosaicering → gdal_contour → tippecanoe → pmtiles → GitHub Release.
+#
+# Output: sweden-contours.pmtiles. Layers: contours (med 'h' attribut för
+# höjd och 'index' bool för 250m-index-kurvor).
+#
+# DEM ändras inte ofta (Copernicus uppdateras 1-2 ggr/år), så ingen schedule.
+# Kör manuellt med workflow_dispatch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release-tag (skapas om saknas).'
+        required: true
+        default: 'tiles-contours-v1'
+      interval:
+        description: 'Höjdkurvs-intervall i meter (mindre = fler linjer).'
+        required: true
+        default: '50'
+      index_interval:
+        description: 'Index-intervall i meter (markeras tjockare i style:n).'
+        required: true
+        default: '250'
+      max_zoom:
+        description: 'tippecanoe maximum-zoom (12 ger overzoom till 19).'
+        required: true
+        default: '12'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-contours
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disk + memory baseline
+        run: |
+          df -h /
+          free -h
+          nproc
+
+      - name: Install gdal + tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin python3-gdal jq xargs unzip ca-certificates curl
+          ogr2ogr --version
+          gdal_contour --version
+
+      - name: Install tippecanoe
+        run: |
+          set -e
+          git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe
+          cd /tmp/tippecanoe
+          make -j"$(nproc)"
+          sudo make install
+          tippecanoe --version
+
+      - name: Install pmtiles CLI
+        run: |
+          set -e
+          curl -sSL https://github.com/protomaps/go-pmtiles/releases/download/v1.30.2/go-pmtiles_1.30.2_Linux_x86_64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin pmtiles
+          pmtiles version
+
+      - name: Generate Copernicus DEM tile-list för Sverige-bbox
+        run: |
+          set -e
+          # Sverige-bbox (lon 10-25, lat 54-70). Copernicus GLO-90 publiceras
+          # som 1°x1° tiles namngivna efter SW-hörnet.
+          mkdir -p dem
+          : > tilelist.txt
+          for lat in $(seq 54 69); do
+            for lon in $(seq 10 24); do
+              # nordliga lat formateras som N00, lon som E000
+              LAT_STR=$(printf "N%02d" "$lat")
+              LON_STR=$(printf "E%03d" "$lon")
+              KEY="Copernicus_DSM_COG_30_${LAT_STR}_00_${LON_STR}_00_DEM"
+              echo "https://copernicus-dem-90m.s3.amazonaws.com/${KEY}/${KEY}.tif" >> tilelist.txt
+            done
+          done
+          wc -l tilelist.txt
+          head -3 tilelist.txt
+
+      - name: Download DEM tiles parallellt
+        run: |
+          set -e
+          # 8 parallella curls. Skipp:a 404 (vissa coords har ingen DEM, t.ex. djuphav).
+          cd dem
+          xargs -P 8 -I{} sh -c 'curl -sSL --fail -o "$(basename {})" "{}" || echo "miss: {}"' < ../tilelist.txt
+          ls *.tif | wc -l
+          du -sh .
+
+      - name: Build VRT mosaic + clip till Sverige-bbox
+        run: |
+          set -e
+          ls dem/*.tif > vrt-input.txt
+          gdalbuildvrt -input_file_list vrt-input.txt sweden-dem.vrt
+          # Klipp till bbox och resampla med average för stabilare kurvor
+          gdalwarp -te 10.0 54.5 24.5 69.5 \
+            -tr 0.001 0.001 \
+            -r average \
+            -of GTiff \
+            -co COMPRESS=DEFLATE \
+            -co TILED=YES \
+            sweden-dem.vrt sweden-dem.tif
+          ls -lh sweden-dem.tif
+
+      - name: Generate contours med gdal_contour
+        run: |
+          set -e
+          INTERVAL="${{ inputs.interval || '50' }}"
+          INDEX="${{ inputs.index_interval || '250' }}"
+
+          # gdal_contour skapar shapefile/geopackage med linjer per höjdsteg.
+          # -a h sparar höjdvärdet i attribut 'h'.
+          # -snodata 0 hoppar över hav (höjd = 0 = no data).
+          gdal_contour -i "${INTERVAL}" -a h -snodata 0 \
+            -f GPKG sweden-dem.tif contours.gpkg
+
+          ogrinfo -al -so contours.gpkg | head -30
+
+          # Konvertera till geojsonseq + lägg till 'index' bool för
+          # höjdsteg som är multipler av INDEX (t.ex. 250m-kurvor).
+          # Vi använder OGR-SQL för att räkna ut det.
+          ogr2ogr -f GeoJSONSeq -dialect SQLITE \
+            -sql "SELECT geom, h, CASE WHEN (CAST(h AS INTEGER) % ${INDEX}) = 0 THEN 1 ELSE 0 END AS is_index FROM contour" \
+            contours.geojsonseq contours.gpkg
+
+          wc -l contours.geojsonseq
+          ls -lh contours.geojsonseq
+
+      - name: Run tippecanoe
+        run: |
+          set -e
+          MAX_ZOOM="${{ inputs.max_zoom || '12' }}"
+
+          tippecanoe -o sweden-contours.mbtiles --force \
+            --minimum-zoom=6 \
+            --maximum-zoom="${MAX_ZOOM}" \
+            --base-zoom="${MAX_ZOOM}" \
+            --simplification=4 \
+            --drop-densest-as-needed \
+            --coalesce-densest-as-needed \
+            --extend-zooms-if-still-dropping \
+            --read-parallel \
+            -L contours:contours.geojsonseq
+
+          ls -lh sweden-contours.mbtiles
+
+      - name: Convert MBTiles → PMTiles
+        run: |
+          set -e
+          pmtiles convert sweden-contours.mbtiles sweden-contours.pmtiles
+          ls -lh sweden-contours.pmtiles
+          pmtiles show sweden-contours.pmtiles | head -30
+
+      - name: Upload as Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG="${{ inputs.release_tag || 'tiles-contours-v1' }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Contours ($TAG)" \
+              --notes "Sweden contours from Copernicus GLO-90, ${INTERVAL:-50}m interval, ${INDEX:-250}m index. Built $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+          fi
+          gh release upload "$TAG" sweden-contours.pmtiles --clobber
+          echo "Asset URL: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/sweden-contours.pmtiles"
+
+      - name: Summary
+        run: |
+          echo "## Contours Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- DEM tiles: $(ls dem/*.tif 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
+          echo "- VRT clipped: $(ls -lh sweden-dem.tif | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- contours.geojsonseq: $(ls -lh contours.geojsonseq | awk '{print $5}') ($(wc -l < contours.geojsonseq) lines)" >> $GITHUB_STEP_SUMMARY
+          echo "- MBTiles: $(ls -lh sweden-contours.mbtiles | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- PMTiles: $(ls -lh sweden-contours.pmtiles | awk '{print $5}')" >> $GITHUB_STEP_SUMMARY
+          echo "- Interval: ${{ inputs.interval || '50' }}m" >> $GITHUB_STEP_SUMMARY
+          echo "- Index: ${{ inputs.index_interval || '250' }}m" >> $GITHUB_STEP_SUMMARY
+          echo "- MaxZoom: ${{ inputs.max_zoom || '12' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Release: ${{ inputs.release_tag || 'tiles-contours-v1' }}" >> $GITHUB_STEP_SUMMARY
