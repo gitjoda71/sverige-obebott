@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gdal-bin python3-gdal jq xargs unzip ca-certificates curl
+            gdal-bin python3-gdal jq unzip ca-certificates curl
           ogr2ogr --version
           gdal_contour --version
 
