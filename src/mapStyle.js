@@ -21,7 +21,7 @@
 //   glaciär          #b8d4e3   ljus is
 //   coastline-rim    #7fb1d6   ljus rim, låg opacity
 
-import { TILES_URL } from './paths.js'
+import { TILES_URL, CONTOURS_URL } from './paths.js'
 
 // Hjälpfunktion för zoom-interpolerade line-bredder
 const lineWidth = (z3, z6, z10, z14, z19) => [
@@ -40,6 +40,11 @@ export const mapStyle = {
       type: 'vector',
       url: `pmtiles://${TILES_URL}`,
       attribution: '© OpenStreetMap contributors',
+    },
+    contours: {
+      type: 'vector',
+      url: `pmtiles://${CONTOURS_URL}`,
+      attribution: 'Höjddata: Copernicus GLO-90',
     },
     // Höjdrelief — Esri World Hillshade. Inga tokens, inga ortnamn,
     // bara skuggning från SRTM/ASTER.
@@ -92,6 +97,48 @@ export const mapStyle = {
         'raster-contrast': 0.15,
         'raster-brightness-min': 0.0,
         'raster-brightness-max': 0.55,
+      },
+    },
+
+    // 3b. Höjdkurvor — Copernicus GLO-90, 50m intervall + 250m index.
+    //     Ritas på land mellan hillshade och vatten så sjöar/hav döljer
+    //     kurvor under vattenytan. Default `none` — slås på via topo-toggle.
+    {
+      id: 'contour-line-minor',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      filter: ['==', ['to-number', ['coalesce', ['get', 'is_index'], 0]], 0],
+      minzoom: 8,
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': '#5e7a8e',
+        'line-width': lineWidth(0, 0, 0.4, 0.7, 1.4),
+        'line-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          8, 0.0,
+          10, 0.35,
+          14, 0.55,
+        ],
+      },
+    },
+    {
+      id: 'contour-line-index',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      filter: ['==', ['to-number', ['coalesce', ['get', 'is_index'], 0]], 1],
+      minzoom: 6,
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': '#7d97ad',
+        'line-width': lineWidth(0.3, 0.6, 1.2, 1.8, 2.6),
+        'line-opacity': [
+          'interpolate', ['linear'], ['zoom'],
+          6, 0.35,
+          10, 0.65,
+          14, 0.75,
+        ],
       },
     },
 
