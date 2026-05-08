@@ -149,10 +149,9 @@ export const mapStyle = {
 
     // 6. Vatten-polygoner — sjöar, dammar, reservoarer.
     //
-    // Filtrera bort natural=bay/strait samt water=sea/ocean — dessa är
-    // stora havsarms-polygoner som överlappar havsbakgrunden och syns
-    // som blå "fält" över skärgården. Hav är redan vår bakgrundsfärg,
-    // så vi behöver inte rita dem som polygoner.
+    // Filtrera bort hav, havsarmar, vikar och sund. Dessa är stora
+    // polygoner som överlappar havsbakgrunden och syns som blå "fält"
+    // ovanpå skärgården. Havet är redan bakgrundsfärgen.
     {
       id: 'water-fill',
       type: 'fill',
@@ -160,9 +159,29 @@ export const mapStyle = {
       'source-layer': 'water',
       filter: [
         'all',
-        ['!', ['in', ['coalesce', ['get', 'natural'], ''], ['literal', ['bay', 'strait']]]],
-        ['!', ['in', ['coalesce', ['get', 'water'], ''], ['literal', ['sea', 'ocean']]]],
+        // Tag-baserade exkluderingar
+        ['!', ['in', ['coalesce', ['get', 'natural'], ''], ['literal', ['bay', 'strait', 'cape']]]],
+        ['!', ['in', ['coalesce', ['get', 'water'], ''], ['literal', ['sea', 'ocean', 'fjord', 'bay', 'strait', 'gulf']]]],
         ['!', ['in', ['coalesce', ['get', 'place'], ''], ['literal', ['sea', 'ocean']]]],
+        ['!=', ['coalesce', ['get', 'boundary'], ''], 'maritime'],
+        // Name-blacklist — kända hav/havsarmar runt Sverige som ofta
+        // mappas som natural=water utan annan tag att hänga oss på.
+        ['!', ['in', ['coalesce', ['get', 'name'], ''], ['literal', [
+          'Bottenhavet', 'Bottniska viken', 'Bottenviken',
+          'Bothnian Sea', 'Bothnian Bay', 'Gulf of Bothnia', 'Sea of Bothnia',
+          'Östersjön', 'Baltic Sea', 'Östra Östersjön', 'Västra Östersjön',
+          'Skagerrak', 'Kattegatt', 'Kattegat',
+          'Öresund', 'The Sound', 'Øresund',
+          'Ålands hav', 'Sea of Åland', 'Åland Sea',
+          'Nordsjön', 'North Sea',
+          'Hanöbukten', 'Bay of Hanö',
+          'Egentliga Östersjön',
+        ]]]],
+        ['!', ['in', ['coalesce', ['get', 'name:sv'], ''], ['literal', [
+          'Bottenhavet', 'Bottniska viken', 'Bottenviken',
+          'Östersjön', 'Skagerrak', 'Kattegatt', 'Öresund',
+          'Ålands hav', 'Nordsjön', 'Hanöbukten',
+        ]]]],
       ],
       paint: {
         'fill-color': '#3a78a6',

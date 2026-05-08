@@ -159,7 +159,31 @@ jobs:
 
           osmium export filtered/water.pbf -f geojsonseq -O \
             --geometry-types=polygon \
-            -o geo/water.geojsonseq
+            -o geo/water_raw.geojsonseq
+
+          # Post-filtrera bort hav/havsarmar som mappats som natural=water
+          # utan natural=bay/strait. Matcha på tag-värden + kända namn.
+          # jq -c bevarar geojsonseq-format (RS-separerade JSON-objekt).
+          sudo apt-get install -y --no-install-recommends jq >/dev/null 2>&1 || true
+          jq -c 'select(
+            (.properties.water // "" | IN("sea","ocean","fjord","bay","strait","gulf") | not) and
+            (.properties.place // "" | IN("sea","ocean") | not) and
+            (.properties.boundary // "") != "maritime" and
+            (.properties.name // "" | IN(
+              "Bottenhavet","Bottniska viken","Bottenviken",
+              "Bothnian Sea","Bothnian Bay","Gulf of Bothnia","Sea of Bothnia",
+              "Östersjön","Baltic Sea","Östra Östersjön","Västra Östersjön",
+              "Skagerrak","Kattegatt","Kattegat","Öresund","The Sound","Øresund",
+              "Ålands hav","Sea of Åland","Åland Sea","Nordsjön","North Sea",
+              "Hanöbukten","Bay of Hanö","Egentliga Östersjön"
+            ) | not) and
+            ((.properties["name:sv"] // "") | IN(
+              "Bottenhavet","Bottniska viken","Bottenviken","Östersjön",
+              "Skagerrak","Kattegatt","Öresund","Ålands hav","Nordsjön","Hanöbukten"
+            ) | not)
+          )' geo/water_raw.geojsonseq > geo/water.geojsonseq
+          echo "water features: $(wc -l < geo/water_raw.geojsonseq) → $(wc -l < geo/water.geojsonseq)"
+          rm geo/water_raw.geojsonseq
 
           osmium export filtered/waterway.pbf -f geojsonseq -O \
             --geometry-types=linestring \
